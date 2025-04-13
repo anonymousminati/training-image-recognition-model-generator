@@ -59,26 +59,25 @@ def extract_image_features(image_path):
     return np.array(image).flatten()  # Flatten the image into a 1D array
 
 # Ensure the pipeline object is not overwritten
-def train_incremental_model(pipeline, upload_dir):
+def train_incremental_model(pipeline, upload_dir, epochs=1):
     if pipeline is None:
         raise ValueError("The pipeline is not initialized. Please ensure it is properly set up before training.")
 
     class_names = load_class_names()
-    for class_name, class_index in class_names.items():
-        class_dir = os.path.join(upload_dir, class_name)
-        if os.path.exists(class_dir):
-            for file_name in os.listdir(class_dir):
-                file_path = os.path.join(class_dir, file_name)
-                if os.path.isfile(file_path):
-                    try:
-                        st.write(f"Processing file: {file_name}")  # Debug log
-                        features = extract_image_features(file_path)  # Extract features from the image
-                        st.write(f"Extracted features: {features[:10]}...")  # Debug log for features
-                        features_dict = {f'pixel_{i}': float(value) for i, value in enumerate(features)}  # Ensure values are floats
-                        st.write(f"Features dictionary: {list(features_dict.items())[:10]}...")  # Debug log for dictionary
-                        pipeline.learn_one(features_dict, class_index)  # Call learn_one without reassigning pipeline
-                    except Exception as e:
-                        st.error(f"Error processing file {file_name}: {e}")
+    for epoch in range(epochs):
+        st.write(f"Epoch {epoch + 1}/{epochs}")  # Display the current epoch
+        for class_name, class_index in class_names.items():
+            class_dir = os.path.join(upload_dir, class_name)
+            if os.path.exists(class_dir):
+                for file_name in os.listdir(class_dir):
+                    file_path = os.path.join(class_dir, file_name)
+                    if os.path.isfile(file_path):
+                        try:
+                            features = extract_image_features(file_path)  # Extract features from the image
+                            features_dict = {f'pixel_{i}': float(value) for i, value in enumerate(features)}  # Ensure values are floats
+                            pipeline.learn_one(features_dict, class_index)  # Call learn_one without reassigning pipeline
+                        except Exception as e:
+                            st.error(f"Error processing file {file_name}: {e}")
     return pipeline
 
 # Function to predict using the River model
@@ -153,12 +152,13 @@ if choice == "Add Classes & Upload Images":
 elif choice == "Train Model":
     st.header('Train the Model')
     update_class_names(UPLOAD_DIR)  # Ensure class_names.json is up-to-date
+    epochs = st.number_input("Enter the number of epochs:", min_value=1, value=1, step=1)
     if st.button('Train Model'):
         if len(os.listdir(UPLOAD_DIR)) == 0:
             st.error("No images found in the dataset. Please upload images before training.")
         else:
             with st.spinner("Training the model incrementally. This may take a while..."):
-                pipeline = train_incremental_model(pipeline, UPLOAD_DIR)
+                pipeline = train_incremental_model(pipeline, UPLOAD_DIR, epochs=epochs)
                 # Save the trained model
                 with open(MODEL_PATH, 'wb') as f:
                     import pickle
