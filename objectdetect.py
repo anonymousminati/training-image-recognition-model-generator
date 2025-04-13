@@ -4,6 +4,9 @@ import json
 from model_handler import get_model, train_model, predict_image
 from data_handler import save_uploaded_images_with_labels, preprocess_image
 from PIL import Image
+import river
+from river.naive_bayes import GaussianNB
+import numpy as np
 
 # Constants
 UPLOAD_DIR = 'uploaded_images'
@@ -45,6 +48,44 @@ def update_class_names(upload_dir):
             class_names[cls] = len(class_names)
         save_class_names(class_names)
         st.success(f"New classes added: {', '.join(new_classes)}")
+
+# Initialize a River model for incremental learning
+pipeline = GaussianNB()
+
+# Function to extract features from an image
+def extract_image_features(image_path):
+    image = Image.open(image_path).convert('L')  # Convert to grayscale
+    image = image.resize((28, 28))  # Resize to a fixed size (e.g., 28x28)
+    return np.array(image).flatten()  # Flatten the image into a 1D array
+
+# Ensure the pipeline object is not overwritten
+def train_incremental_model(pipeline, upload_dir):
+    if pipeline is None:
+        raise ValueError("The pipeline is not initialized. Please ensure it is properly set up before training.")
+
+    class_names = load_class_names()
+    for class_name, class_index in class_names.items():
+        class_dir = os.path.join(upload_dir, class_name)
+        if os.path.exists(class_dir):
+            for file_name in os.listdir(class_dir):
+                file_path = os.path.join(class_dir, file_name)
+                if os.path.isfile(file_path):
+                    try:
+                        st.write(f"Processing file: {file_name}")  # Debug log
+                        features = extract_image_features(file_path)  # Extract features from the image
+                        st.write(f"Extracted features: {features[:10]}...")  # Debug log for features
+                        features_dict = {f'pixel_{i}': float(value) for i, value in enumerate(features)}  # Ensure values are floats
+                        st.write(f"Features dictionary: {list(features_dict.items())[:10]}...")  # Debug log for dictionary
+                        pipeline.learn_one(features_dict, class_index)  # Call learn_one without reassigning pipeline
+                    except Exception as e:
+                        st.error(f"Error processing file {file_name}: {e}")
+    return pipeline
+
+# Function to predict using the River model
+def predict_incremental_model(pipeline, file_path):
+    with open(file_path, 'r') as f:
+        text = f.read()  # Assuming text data for simplicity
+        return pipeline.predict_one(text)
 
 # Enhance UI for better user experience
 st.set_page_config(page_title="Object Detection Trainer", layout="wide")
@@ -116,34 +157,39 @@ elif choice == "Train Model":
         if len(os.listdir(UPLOAD_DIR)) == 0:
             st.error("No images found in the dataset. Please upload images before training.")
         else:
-            with st.spinner("Training the model. This may take a while..."):
-                model = get_model(MODEL_PATH, UPLOAD_DIR)
-                train_model(model, UPLOAD_DIR, MODEL_PATH)
-            st.success('Model trained successfully!')
+            with st.spinner("Training the model incrementally. This may take a while..."):
+                pipeline = train_incremental_model(pipeline, UPLOAD_DIR)
+                # Save the trained model
+                with open(MODEL_PATH, 'wb') as f:
+                    import pickle
+                    pickle.dump(pipeline, f)
+            st.success('Model trained incrementally and saved successfully!')
 
 elif choice == "Test Model":
     st.header('Test the Model')
-    if not os.path.exists(MODEL_PATH):
-        st.error("Model not found. Please train the model first.")
-    else:
-        test_file = st.file_uploader("Upload a single image to test", type=["jpg", "jpeg", "png"], key="test_with_output")
-        if test_file is not None:
-            test_image_path = os.path.join(UPLOAD_DIR, test_file.name)
-            image = Image.open(test_file)
-            image.save(test_image_path)
-            with st.spinner("Processing the image and predicting..."):
-                model = get_model(MODEL_PATH, UPLOAD_DIR)
-                image_array = preprocess_image(test_image_path)
-                predicted_class, confidence = predict_image(model, image_array)
-            st.image(test_image_path, caption="Uploaded Image", use_container_width=True)
+    test_file = st.file_uploader("Upload a single image to test", type=["jpg", "jpeg", "png"], key="test_with_output")
+    if test_file is not None:
+        # Save the uploaded file to a temporary location
+        test_image_path = os.path.join(UPLOAD_DIR, test_file.name)
+        with open(test_image_path, 'wb') as f:
+            f.write(test_file.getbuffer())
 
+        # Load the saved model
+        try:
+            with open(MODEL_PATH, 'rb') as f:
+                import pickle
+                pipeline = pickle.load(f)
+
+            # Process the saved file
+            features = extract_image_features(test_image_path)  # Extract features from the image
+            features_dict = {f'pixel_{i}': float(value) for i, value in enumerate(features)}
+            predicted_class = pipeline.predict_one(features_dict)
+
+            # Map the predicted class index to the class name
             class_names = load_class_names()
-            if confidence < CONFIDENCE_THRESHOLD:
-                predicted_class_name = "Unknown"
-            elif predicted_class < len(class_names):
-                predicted_class_name = list(class_names.keys())[predicted_class]
-            else:
-                predicted_class_name = f"Class {predicted_class}"  # Fallback
+            predicted_class_name = [name for name, index in class_names.items() if index == predicted_class]
+            predicted_class_name = predicted_class_name[0] if predicted_class_name else "Unknown"
 
             st.write(f"Predicted Class: {predicted_class_name}")
-            st.write(f"Confidence: {confidence:.2f}")
+        except Exception as e:
+            st.error(f"Error loading the model or processing the test image: {e}")
