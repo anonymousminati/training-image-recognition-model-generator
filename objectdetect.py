@@ -1,5 +1,6 @@
 import streamlit as st
 import os
+import json
 from model_handler import get_model, train_model, predict_image
 from data_handler import save_uploaded_images_with_labels, preprocess_image
 from PIL import Image
@@ -7,38 +8,50 @@ from PIL import Image
 # Constants
 UPLOAD_DIR = 'uploaded_images'
 MODEL_PATH = 'object_detection_model.keras'
-CLASS_NAMES_FILE = 'class_names.txt'
+CLASS_NAMES_FILE = 'class_names.json'
 CONFIDENCE_THRESHOLD = 0.8  # Updated threshold to 80%
 
 # Initialize session state
 if 'classes' not in st.session_state:
     st.session_state['classes'] = []
 
-# Function to load class names from a file
+# Function to load class names from a JSON file
 def load_class_names():
     if os.path.exists(CLASS_NAMES_FILE):
         with open(CLASS_NAMES_FILE, 'r') as f:
-            return [line.strip() for line in f.readlines()]
-    return []
+            return json.load(f)
+    return {}
 
-# Function to add a new class to class_names.txt if it doesn't exist
+# Function to save class names to a JSON file
+def save_class_names(class_names):
+    with open(CLASS_NAMES_FILE, 'w') as f:
+        json.dump(class_names, f, indent=4)
+
+# Function to add a new class to class_names.json if it doesn't exist
 def add_class_to_file(class_name):
-    if not os.path.exists(CLASS_NAMES_FILE):
-        with open(CLASS_NAMES_FILE, 'w') as f:
-            f.write(f"{class_name}\n")
-    else:
-        with open(CLASS_NAMES_FILE, 'r') as f:
-            existing_classes = [line.strip() for line in f.readlines()]
-        if class_name not in existing_classes:
-            with open(CLASS_NAMES_FILE, 'a') as f:
-                f.write(f"{class_name}\n")
+    class_names = load_class_names()
+    if class_name not in class_names:
+        class_names[class_name] = len(class_names)
+        save_class_names(class_names)
+
+# Automatically update class_names.json when new classes are detected
+def update_class_names(upload_dir):
+    class_names = load_class_names()
+    current_classes = [name for name in os.listdir(upload_dir) if os.path.isdir(os.path.join(upload_dir, name))]
+
+    new_classes = [cls for cls in current_classes if cls not in class_names]
+    if new_classes:
+        for cls in new_classes:
+            class_names[cls] = len(class_names)
+        save_class_names(class_names)
+        st.success(f"New classes added: {', '.join(new_classes)}")
 
 # Enhance UI for better user experience
 st.set_page_config(page_title="Object Detection Trainer", layout="wide")
 st.markdown("""
     <style>
     .main {
-        background-color: #f5f5f5;
+        background-color: #0E1117;
         padding: 20px;
         border-radius: 10px;
     }
@@ -72,7 +85,7 @@ if choice == "Add Classes & Upload Images":
     if st.button("Add Class"):
         if new_class_name and new_class_name not in st.session_state['classes']:
             st.session_state['classes'].append(new_class_name)
-            add_class_to_file(new_class_name)  # Add to class_names.txt
+            add_class_to_file(new_class_name)  # Add to class_names.json
             st.success(f"Class '{new_class_name}' added successfully!")
         elif new_class_name in st.session_state['classes']:
             st.warning(f"Class '{new_class_name}' already exists.")
@@ -98,6 +111,7 @@ if choice == "Add Classes & Upload Images":
 
 elif choice == "Train Model":
     st.header('Train the Model')
+    update_class_names(UPLOAD_DIR)  # Ensure class_names.json is up-to-date
     if st.button('Train Model'):
         if len(os.listdir(UPLOAD_DIR)) == 0:
             st.error("No images found in the dataset. Please upload images before training.")
@@ -127,7 +141,7 @@ elif choice == "Test Model":
             if confidence < CONFIDENCE_THRESHOLD:
                 predicted_class_name = "Unknown"
             elif predicted_class < len(class_names):
-                predicted_class_name = class_names[predicted_class]
+                predicted_class_name = list(class_names.keys())[predicted_class]
             else:
                 predicted_class_name = f"Class {predicted_class}"  # Fallback
 

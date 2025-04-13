@@ -10,12 +10,39 @@ def get_num_classes(upload_dir):
     else:
         raise TypeError("upload_dir must be a string representing the path to the directory.")
 
+def update_model_for_new_classes(model, num_classes):
+    # Extract the base model from the existing model
+    if hasattr(model, 'layers') and len(model.layers) > 1:
+        base_model = model.layers[0]  # Assuming the base model is the first layer
+    else:
+        raise ValueError("The provided model does not have a valid base model.")
+
+    # Ensure the base model has an input
+    if not hasattr(base_model, 'input') or base_model.input is None:
+        raise ValueError("The base model does not have a valid input. Recreate the base model.")
+
+    base_model.trainable = False
+
+    # Create a new output layer with the updated number of classes
+    x = base_model.output
+    x = GlobalAveragePooling2D()(x)
+    x = Dense(1024, activation='relu')(x)
+    predictions = Dense(num_classes, activation='softmax')(x)
+
+    # Create a new model with the updated output layer
+    updated_model = Model(inputs=base_model.input, outputs=predictions)
+
+    # Compile the updated model
+    updated_model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+    return updated_model
+
 def get_model(model_path, upload_dir):
     num_classes = get_num_classes(upload_dir)
     if os.path.exists(model_path):
         model = load_model(model_path)
         if model.output_shape[-1] != num_classes:
-            raise ValueError(f"Model output shape ({model.output_shape[-1]}) does not match the number of classes ({num_classes}). Please retrain the model.")
+            # Update the model for the new number of classes
+            model = update_model_for_new_classes(model, num_classes)
         model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
         return model
     else:
