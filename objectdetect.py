@@ -12,7 +12,7 @@ import numpy as np
 UPLOAD_DIR = 'uploaded_images'
 MODEL_PATH = 'object_detection_model.keras'
 CLASS_NAMES_FILE = 'class_names.json'
-CONFIDENCE_THRESHOLD = 0.8  # Updated threshold to 80%
+CONFIDENCE_THRESHOLD = 0.6  # Updated threshold to 60%
 
 # Initialize session state
 if 'classes' not in st.session_state:
@@ -183,13 +183,24 @@ elif choice == "Test Model":
             # Process the saved file
             features = extract_image_features(test_image_path)  # Extract features from the image
             features_dict = {f'pixel_{i}': float(value) for i, value in enumerate(features)}
-            predicted_class = pipeline.predict_one(features_dict)
+            predictions = pipeline.predict_proba_one(features_dict)  # Get prediction probabilities
 
-            # Map the predicted class index to the class name
-            class_names = load_class_names()
-            predicted_class_name = [name for name, index in class_names.items() if index == predicted_class]
-            predicted_class_name = predicted_class_name[0] if predicted_class_name else "Unknown"
+            # Determine the predicted class and confidence
+            if predictions:
+                predicted_class = max(predictions, key=predictions.get)
+                confidence = predictions[predicted_class]
 
-            st.write(f"Predicted Class: {predicted_class_name}")
+                # Check confidence threshold
+                if confidence < CONFIDENCE_THRESHOLD:
+                    predicted_class_name = "Unknown"
+                else:
+                    class_names = load_class_names()
+                    predicted_class_name = [name for name, index in class_names.items() if index == int(predicted_class)]
+                    predicted_class_name = predicted_class_name[0] if predicted_class_name else "Unknown"
+
+                st.write(f"Predicted Class: {predicted_class_name}")
+                st.write(f"Confidence: {confidence:.2f}")
+            else:
+                st.write("No predictions available.")
         except Exception as e:
             st.error(f"Error loading the model or processing the test image: {e}")
