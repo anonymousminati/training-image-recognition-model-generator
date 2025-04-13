@@ -58,7 +58,7 @@ def extract_image_features(image_path):
     image = image.resize((28, 28))  # Resize to a fixed size (e.g., 28x28)
     return np.array(image).flatten()  # Flatten the image into a 1D array
 
-# Ensure the pipeline object is not overwritten
+# Add progress bars for each epoch during training
 def train_incremental_model(pipeline, upload_dir, epochs=1):
     if pipeline is None:
         raise ValueError("The pipeline is not initialized. Please ensure it is properly set up before training.")
@@ -66,6 +66,10 @@ def train_incremental_model(pipeline, upload_dir, epochs=1):
     class_names = load_class_names()
     for epoch in range(epochs):
         st.write(f"Epoch {epoch + 1}/{epochs}")  # Display the current epoch
+        progress_bar = st.progress(0)  # Initialize the progress bar
+        total_files = sum(len(files) for _, _, files in os.walk(upload_dir))
+        processed_files = 0
+
         for class_name, class_index in class_names.items():
             class_dir = os.path.join(upload_dir, class_name)
             if os.path.exists(class_dir):
@@ -78,6 +82,8 @@ def train_incremental_model(pipeline, upload_dir, epochs=1):
                             pipeline.learn_one(features_dict, class_index)  # Call learn_one without reassigning pipeline
                         except Exception as e:
                             st.error(f"Error processing file {file_name}: {e}")
+                        processed_files += 1
+                        progress_bar.progress(processed_files / total_files)  # Update the progress bar
     return pipeline
 
 # Function to predict using the River model
