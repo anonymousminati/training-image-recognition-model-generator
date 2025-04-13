@@ -2,14 +2,10 @@
 
 This project is a Streamlit-based application for training and testing object detection models. Users can upload images, label them with class names, train a model using transfer learning, and test the model with new images.
 
-## Features
-- Upload images with class labels.
-- Train a model using transfer learning.
-- Test the model with new images.
-- Automatically handles new classes and updates the model.
-- Displays predictions with confidence levels.
-- Classifies low-confidence predictions as "Unknown."
-- Progress bars for each epoch during training.
+## Updated Features
+- **Batch Testing**: Upload multiple images for testing, provide feedback using checkboxes, and view a bar chart showing counts of true predictions, false predictions, and unknowns.
+- **Progress Bars**: Visual progress bars for each epoch during training.
+- **Confidence Threshold**: Predictions below the confidence threshold (default: 80%) are classified as "Unknown."
 
 ## Setup Instructions
 1. Clone the repository.
@@ -32,6 +28,7 @@ This project is a Streamlit-based application for training and testing object de
 1. Navigate to the "Add Classes & Upload Images" section to upload images.
 2. Go to the "Train Model" section to train the model. Specify the number of epochs and view progress bars for each epoch.
 3. Use the "Test Model" section to test the model with new images. The model will classify the image and display the confidence level.
+4. Use the "Batch Test Model" section to test the model with multiple images and view overall accuracy.
 
 ## Detailed Steps for Using the Application
 
@@ -49,7 +46,7 @@ This project is a Streamlit-based application for training and testing object de
 - Navigate to the "Train Model" section from the sidebar.
 - Ensure that images are uploaded for all desired classes.
 - Specify the number of epochs for training using the input field.
-  - The default value is 30, but you can increase it as needed.
+  - The default value is 1, but you can increase it as needed.
 - Click the "Train Model" button to start training.
   - A progress bar will display the progress of each epoch.
   - The model will be trained incrementally, and its state will be saved after training.
@@ -63,6 +60,14 @@ This project is a Streamlit-based application for training and testing object de
   - The predicted class name.
   - The confidence level of the prediction.
 - If the confidence level is below the threshold (default: 80%), the result will be displayed as "Unknown."
+
+### 4. Batch Test the Model
+- Navigate to the "Batch Test Model" section from the sidebar.
+- Upload multiple images for batch testing.
+  - Each image will be processed, and the model will predict the class and confidence level.
+- Provide feedback for each prediction using checkboxes to mark whether the prediction is correct.
+- View the overall accuracy based on user feedback.
+- A bar chart will display the counts of true predictions, false predictions, and unknowns.
 
 ### Notes
 - Ensure that the `uploaded_images/` directory is structured with subfolders for each class.

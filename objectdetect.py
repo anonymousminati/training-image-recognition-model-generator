@@ -12,7 +12,7 @@ import numpy as np
 UPLOAD_DIR = 'uploaded_images'
 MODEL_PATH = 'object_detection_model.keras'
 CLASS_NAMES_FILE = 'class_names.json'
-CONFIDENCE_THRESHOLD = 0.6  # Updated threshold to 60%
+CONFIDENCE_THRESHOLD = 0.8  # Updated threshold to 60%
 STANDARD_EPOCHS = 30  # Standard number of epochs for training
 
 # Initialize session state
@@ -123,7 +123,7 @@ st.markdown("""
 
 # Add a sidebar for navigation
 st.sidebar.title("Navigation")
-options = ["Add Classes & Upload Images", "Train Model", "Test Model"]
+options = ["Add Classes & Upload Images", "Train Model", "Test Model", "Batch Test Model"]
 choice = st.sidebar.radio("Go to", options)
 
 if choice == "Add Classes & Upload Images":
@@ -211,3 +211,81 @@ elif choice == "Test Model":
                 st.write("No predictions available.")
         except Exception as e:
             st.error(f"Error loading the model or processing the test image: {e}")
+
+# Update the Batch Test Model section to show a chart with false predictions, true predictions, and unknowns
+elif choice == "Batch Test Model":
+    st.header('Batch Test the Model')
+    test_files = st.file_uploader("Upload multiple images for batch testing", type=["jpg", "jpeg", "png"], accept_multiple_files=True, key="batch_test")
+    if test_files:
+        # Load the saved model
+        try:
+            with open(MODEL_PATH, 'rb') as f:
+                import pickle
+                pipeline = pickle.load(f)
+
+            class_names = load_class_names()
+            results = []
+
+            for test_file in test_files:
+                # Save the uploaded file to a temporary location
+                test_image_path = os.path.join(UPLOAD_DIR, test_file.name)
+                with open(test_image_path, 'wb') as f:
+                    f.write(test_file.getbuffer())
+
+                # Process the saved file
+                features = extract_image_features(test_image_path)  # Extract features from the image
+                features_dict = {f'pixel_{i}': float(value) for i, value in enumerate(features)}
+                predictions = pipeline.predict_proba_one(features_dict)  # Get prediction probabilities
+
+                if predictions:
+                    predicted_class = max(predictions, key=predictions.get)
+                    confidence = predictions[predicted_class]
+
+                    # Check confidence threshold
+                    if confidence < CONFIDENCE_THRESHOLD:
+                        predicted_class_name = "Unknown"
+                    else:
+                        predicted_class_name = [name for name, index in class_names.items() if index == int(predicted_class)]
+                        predicted_class_name = predicted_class_name[0] if predicted_class_name else "Unknown"
+
+                    # Store results
+                    results.append({
+                        "Image": test_file.name,
+                        "Predicted": predicted_class_name,
+                        "Confidence": confidence
+                    })
+
+            # Display results with checkboxes for feedback
+            correct_predictions = 0
+            false_predictions = 0
+            unknown_predictions = 0
+
+            for result in results:
+                st.image(os.path.join(UPLOAD_DIR, result["Image"]), caption=result["Image"], width=200)
+                st.write(f"Predicted Class: {result['Predicted']}")
+                st.write(f"Confidence: {result['Confidence']:.2f}")
+                is_correct = st.checkbox(f"Is the prediction correct for {result['Image']}?", key=result['Image'])
+
+                if result['Predicted'] == "Unknown":
+                    unknown_predictions += 1
+                elif is_correct:
+                    correct_predictions += 1
+                else:
+                    false_predictions += 1
+
+            # Calculate accuracy
+            total_images = len(results)
+            if total_images > 0:
+                accuracy = correct_predictions / total_images
+                st.write(f"Accuracy based on user feedback: {accuracy * 100:.2f}%")
+
+            # Display chart with true, false, and unknown predictions
+            import pandas as pd
+            chart_data = pd.DataFrame({
+                "Category": ["True Predictions", "False Predictions", "Unknown"],
+                "Count": [correct_predictions, false_predictions, unknown_predictions]
+            })
+            st.bar_chart(chart_data.set_index("Category"))
+
+        except Exception as e:
+            st.error(f"Error loading the model or processing the test images: {e}")
